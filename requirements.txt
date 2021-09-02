@@ -1,0 +1,7 @@
+vit-pytorch
+torch
+torchvision
+numpy
+pandas
+pillow
+timm
