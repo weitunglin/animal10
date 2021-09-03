@@ -31,11 +31,11 @@ def save_model(run_name, model):
     f.close()
     torch.save(model_to_save.state_dict(), model_checkpoint)
 
-def train(net, dataset, criterion, optimizer, epoch, tb, args):
+def train(net, dataset, criterion, optimizer, epoch, tb, args, device):
     global step
     running_loss = 0.0
-    ground_truth = torch.Tensor([])
-    predictions = torch.Tensor([])
+    ground_truth = torch.Tensor([]).to(device)
+    predictions = torch.Tensor([]).to(device)
     net.train()
 
     for i, (images, labels) in enumerate(dataset):
@@ -61,10 +61,10 @@ def train(net, dataset, criterion, optimizer, epoch, tb, args):
     tb.add_scalar(f"Training Accuracy (by epoch)", accuracy, epoch)
     print(f"Training Accuracy (by epoch): {accuracy}")
 
-def test(net, dataset, epoch, tb, args):
+def test(net, dataset, epoch, tb, args, device):
     global best_acc
-    ground_truth = torch.Tensor([])
-    predictions = torch.Tensor([])
+    ground_truth = torch.Tensor([]).to(device)
+    predictions = torch.Tensor([]).to(device)
     net.eval()
 
     for i, (images, labels) in enumerate(dataset):
@@ -156,6 +156,7 @@ def main():
     test_dataset = DataLoader(Animal10Dataset(test_df, transform=test_transform), batch_size=args.batch_size, shuffle=False, num_workers=4)
 
     # initialize network
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     if args.net == "vit":
         net = ViT(
             image_size=100*100,
@@ -174,6 +175,8 @@ def main():
         net.head = nn.Linear(net.head.in_features, 10)
     elif args.net == "conv":
         net = Conv3Layer(num_classes=10)
+    
+    net = net.to(deivce)
  
     print("----- model summary -----")
     print(summary(net, (3, 100, 100)))
@@ -187,15 +190,15 @@ def main():
 
     for epoch in range(1, args.epochs + 1):
         print(f"----- Epoch {epoch} -----")
-        train(net, train_dataset, criterion, optimizer, epoch, tb, args)
-        test(net, test_dataset, epoch, tb, args)
+        train(net, train_dataset, criterion, optimizer, epoch, tb, args, device)
+        test(net, test_dataset, epoch, tb, args, device)
         print(f"----- End of epoch {epoch} -----")
 
     global best_acc
     print(f"Best Accuracy: {best_acc}")
 
-    test_ground_truth = torch.Tensor([])
-    test_predictions = torch.Tensor([])
+    test_ground_truth = torch.Tensor([]).to(device)
+    test_predictions = torch.Tensor([]).to(device)
     with torch.no_grad():
         net.eval()
         for (images, labels) in test_dataset:
