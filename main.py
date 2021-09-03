@@ -24,7 +24,14 @@ def calculate_accuracy(ground_truth, predictions):
     correct_count = (ground_truth == predictions).sum().item()
     return correct_count / total_count
 
-def train(net, dataset, criterion, optimizer, epoch, tb):
+def save_model(run_name, model):
+    model_to_save = model.module if hasattr(model, 'module') else model
+    model_checkpoint = os.path.join("~/ml/animal10/checkpoints/", f"{run_name}_checkpoint.bin")
+    f = open(model_checkpoint, "w+")
+    f.close()
+    torch.save(model_to_save.state_dict(), model_checkpoint)
+
+def train(net, dataset, criterion, optimizer, epoch, tb, args):
     global step
     running_loss = 0.0
     ground_truth = torch.Tensor([])
@@ -54,7 +61,7 @@ def train(net, dataset, criterion, optimizer, epoch, tb):
     tb.add_scalar(f"Training Accuracy (by epoch)", accuracy, epoch)
     print(f"Training Accuracy (by epoch): {accuracy}")
 
-def test(net, dataset, epoch, tb):
+def test(net, dataset, epoch, tb, args):
     global best_acc
     ground_truth = torch.Tensor([])
     predictions = torch.Tensor([])
@@ -77,9 +84,10 @@ def test(net, dataset, epoch, tb):
     tb.add_scalar(f"Test Accuracy (by epoch)", accuracy, epoch)
     print(f"Test Accuracy (by epoch): {accuracy}")
 
-    if accuracy < best_acc:
+    if best_acc < accuracy:
         best_acc = accuracy
-        print(f"Current Best Accurary: {best_acc}")
+        save_model(args.run_name, net)
+        print(f"New Best Accurary: {best_acc}")
 
 def main():
     # parse arguments
@@ -132,13 +140,20 @@ def main():
     print(test_df.describe())
     print(test_df.groupby(["label"]).size())
 
-    transform = transforms.Compose([
+    train_transform = transforms.Compose([
+        transforms.Resize((100, 100)),
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomRotation(15),
+        transforms.ToTensor(),
+        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))])
+
+    test_transform = transforms.Compose([
         transforms.Resize((100, 100)),
         transforms.ToTensor(),
         transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))])
     
-    train_dataset = DataLoader(Animal10Dataset(train_df, transform=transform), batch_size=args.batch_size, shuffle=True, num_workers=4)
-    test_dataset = DataLoader(Animal10Dataset(test_df, transform=transform), batch_size=args.batch_size, shuffle=False, num_workers=4)
+    train_dataset = DataLoader(Animal10Dataset(train_df, transform=train_transform), batch_size=args.batch_size, shuffle=True, num_workers=4)
+    test_dataset = DataLoader(Animal10Dataset(test_df, transform=test_transform), batch_size=args.batch_size, shuffle=False, num_workers=4)
 
     # initialize network
     if args.net == "vit":
@@ -172,12 +187,26 @@ def main():
 
     for epoch in range(1, args.epochs + 1):
         print(f"----- Epoch {epoch} -----")
-        train(net, train_dataset, criterion, optimizer, epoch, tb)
-        test(net, test_dataset, epoch, tb)
+        train(net, train_dataset, criterion, optimizer, epoch, tb, args)
+        test(net, test_dataset, epoch, tb, args)
         print(f"----- End of epoch {epoch} -----")
 
     global best_acc
     print(f"Best Accuracy: {best_acc}")
+
+    test_ground_truth = torch.Tensor([])
+    test_predictions = torch.Tensor([])
+    with torch.no_grad():
+        net.eval()
+        for (images, labels) in test_dataset:
+            outputs = net(images)
+            test_ground_truth = torch.cat((test_ground_truth, labels))
+            test_predictions = torch.cat((test_predictions, torch.argmax(outputs, dim=-1)))
+    
+    confusion_df = pd.crosstab(test_ground_truth, test_predictions, rownames=["Actual"], colnames=["Predicted"], margins=True)
+    print("----- confusion matrix -----")
+    print(confusion_df)
+
     tb.close()
 
 if __name__ == "__main__":
