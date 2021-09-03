@@ -99,7 +99,7 @@ def main():
     parser.add_argument("--batch-size", type=int, default=16, help="batch size for the dataset")
     parser.add_argument("--patch-size", type=int, default=4, help="patch size for vit network")
     parser.add_argument("--tb", type=bool, default=True, help="store result to tensor board")
-    parser.add_argument("--run-name", type=str, default=datetime.now().strftime("%Y/%m/%d %H:%M:%S"), help="run name for tensor board")
+    parser.add_argument("--run-name", type=str, default=datetime.now().strftime("%Y_%m_%d_%H:%M:%S"), help="run name for tensor board")
     parser.add_argument("--random-seed", type=int, default=42, help="designated random seed to enabel reproducity of the training process")
 
     args = parser.parse_args()
