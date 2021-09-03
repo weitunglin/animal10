@@ -7,7 +7,7 @@ class Animal10Dataset(Dataset):
         super().__init__()
         self.df = df
         self.transform = transform
-        self.mapping = {"Dog": 0, "Horse": 1, "Elephant": 2, "Butterfly": 3, "Chicken": 4, "Cat": 5, "Cow": 6, "Sheep": 7, "Squirrel": 8, "Spider": 9}
+        self.mapping = {"Dog": 4, "Horse": 6, "Elephant": 5, "Butterfly": 0, "Chicken": 2, "Cat": 1, "Cow": 3, "Sheep": 7, "Squirrel": 9, "Spider": 8}
   
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
