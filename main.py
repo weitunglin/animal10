@@ -26,9 +26,7 @@ def calculate_accuracy(ground_truth, predictions):
 
 def save_model(run_name, model):
     model_to_save = model.module if hasattr(model, 'module') else model
-    model_checkpoint = os.path.join("~/ml/animal10/checkpoints/", f"{run_name}_checkpoint.bin")
-    f = open(model_checkpoint, "w+")
-    f.close()
+    model_checkpoint = os.path.join("C:\\Users\\Allen\\ml\\animal10\\checkpoints", f"{run_name}_checkpoint.bin")
     torch.save(model_to_save.state_dict(), model_checkpoint)
 
 def train(net, dataset, criterion, optimizer, epoch, tb, args, device):
@@ -39,6 +37,7 @@ def train(net, dataset, criterion, optimizer, epoch, tb, args, device):
     net.train()
 
     for i, (images, labels) in enumerate(dataset):
+        images, labels = images.to(device), labels.to(device)
         optimizer.zero_grad()
         outputs = net(images)
 
@@ -68,6 +67,7 @@ def test(net, dataset, epoch, tb, args, device):
     net.eval()
 
     for i, (images, labels) in enumerate(dataset):
+        images, labels = images.to(device), labels.to(device)
         with torch.no_grad():
             outputs = net(images)
         
@@ -99,7 +99,7 @@ def main():
     parser.add_argument("--batch-size", type=int, default=16, help="batch size for the dataset")
     parser.add_argument("--patch-size", type=int, default=4, help="patch size for vit network")
     parser.add_argument("--tb", type=bool, default=True, help="store result to tensor board")
-    parser.add_argument("--run-name", type=str, default=datetime.now().strftime("%Y_%m_%d_%H:%M:%S"), help="run name for tensor board")
+    parser.add_argument("--run-name", type=str, default=datetime.now().strftime("%Y%m%d_%H_%M_%S"), help="run name for tensor board")
     parser.add_argument("--random-seed", type=int, default=42, help="designated random seed to enabel reproducity of the training process")
 
     args = parser.parse_args()
@@ -176,15 +176,15 @@ def main():
     elif args.net == "conv":
         net = Conv3Layer(num_classes=10)
     
-    net = net.to(deivce)
+    net = net.to(device)
  
     print("----- model summary -----")
     print(summary(net, (3, 100, 100)))
 
-    criterion = nn.CrossEntropyLoss(weight=torch.Tensor(train_distribution))
+    criterion = nn.CrossEntropyLoss(weight=torch.Tensor(train_distribution).to(device))
     optimizer = torch.optim.Adam(net.parameters(), lr=1e-3)
  
-    sample_images = iter(test_dataset).next()[0]
+    sample_images = iter(test_dataset).next()[0].to(device)
     tb.add_image("animal 10", make_grid(sample_images))
     tb.add_graph(net, sample_images)
 
@@ -202,6 +202,7 @@ def main():
     with torch.no_grad():
         net.eval()
         for (images, labels) in test_dataset:
+            images, labels = images.to(device), labels.to(device)
             outputs = net(images)
             test_ground_truth = torch.cat((test_ground_truth, labels))
             test_predictions = torch.cat((test_predictions, torch.argmax(outputs, dim=-1)))

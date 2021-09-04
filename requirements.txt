@@ -1,6 +1,8 @@
 vit-pytorch
 torch
 torchvision
+torchsummary
+tensorboard
 numpy
 pandas
 pillow
