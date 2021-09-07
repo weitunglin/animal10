@@ -11,10 +11,11 @@ import os
 import argparse
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from vit_pytorch import ViT
 from datetime import datetime
 from dataset import Animal10Dataset
-from model import Conv3Layer
+from model import Baseline, CNN
 
 step = 1
 best_acc = 0
@@ -29,6 +30,11 @@ def save_model(run_name, model):
     model_checkpoint = os.path.join("C:\\Users\\Allen\\ml\\animal10\\checkpoints", f"{run_name}_checkpoint.bin")
     torch.save(model_to_save.state_dict(), model_checkpoint)
 
+def load_model(run_name, model):
+    model_checkpoint = os.path.join("C:\\Users\\Allen\\ml\\animal10\\checkpoints", f"{run_name}_checkpoint.bin")
+    model.load_state_dict(torch.load(model_checkpoint))
+    return model
+
 def train(net, dataset, criterion, optimizer, epoch, tb, args, device):
     global step
     running_loss = 0.0
@@ -38,12 +44,12 @@ def train(net, dataset, criterion, optimizer, epoch, tb, args, device):
 
     for i, (images, labels) in enumerate(dataset):
         images, labels = images.to(device), labels.to(device)
-        optimizer.zero_grad()
         outputs = net(images)
 
         loss = criterion(outputs, labels)
         loss.backward()
         optimizer.step()
+        optimizer.zero_grad()
 
         ground_truth = torch.cat((ground_truth, labels))
         for item in outputs:
@@ -77,8 +83,6 @@ def test(net, dataset, epoch, tb, args, device):
         if i % 20 == 0:
             batch_labels = labels
             print(f"accuracy: {calculate_accuracy(batch_labels, batch_predictions)}\t correct count: {(batch_labels == batch_predictions).sum().item()}")
-            print(batch_labels)
-            print(batch_predictions)
 
     accuracy = calculate_accuracy(ground_truth, predictions)
     tb.add_scalar(f"Test Accuracy (by epoch)", accuracy, epoch)
@@ -87,7 +91,7 @@ def test(net, dataset, epoch, tb, args, device):
     if best_acc < accuracy:
         best_acc = accuracy
         save_model(args.run_name, net)
-        print(f"New Best Accurary: {best_acc}")
+        print(f"New Best Accurary: {best_acc} on epoch {epoch}")
 
 def main():
     # parse arguments
@@ -96,11 +100,12 @@ def main():
     parser.add_argument("--input", type=str, required=True, help="directory to input")
     parser.add_argument("--net", type=str, required=True, help="select the network")
     parser.add_argument("--epochs", type=int, required=True, help="epochs for training")
-    parser.add_argument("--batch-size", type=int, default=16, help="batch size for the dataset")
+    parser.add_argument("--batch-size", type=int, default=32, help="batch size for the dataset")
     parser.add_argument("--patch-size", type=int, default=4, help="patch size for vit network")
     parser.add_argument("--tb", type=bool, default=True, help="store result to tensor board")
     parser.add_argument("--run-name", type=str, default=datetime.now().strftime("%Y%m%d_%H_%M_%S"), help="run name for tensor board")
     parser.add_argument("--random-seed", type=int, default=42, help="designated random seed to enabel reproducity of the training process")
+    parser.add_argument("--max-data-count", type=int, default=None, help="reduce data size for quick testing")
 
     args = parser.parse_args()
     print("----- args -----")
@@ -115,9 +120,12 @@ def main():
     translate = {"cane": "Dog", "cavallo": "Horse", "elefante": "Elephant", "farfalla": "Butterfly", "gallina": "Chicken", "gatto": "Cat", "mucca": "Cow", "pecora": "Sheep", "scoiattolo": "Squirrel", "ragno": "Spider"}
     categories = os.listdir(args.input)
     origin_data = np.array([])
+    max_data_count = args.max_data_count
     for category in categories:
         files = os.listdir(f"{args.input}/{category}")
-        for f in files:
+        for i, f in enumerate(files):
+            if max_data_count and i > max_data_count:
+                break
             origin_data = np.append(origin_data, [translate[category], f"{args.input}/{category}/{f}"], axis=0)
     origin_data = origin_data.reshape((-1, 2))
 
@@ -173,8 +181,10 @@ def main():
         import timm
         net = timm.create_model("vit_small_patch16_224", pretrained=True)
         net.head = nn.Linear(net.head.in_features, 10)
-    elif args.net == "conv":
-        net = Conv3Layer(num_classes=10)
+    elif args.net == "baseline":
+        net = Baseline(num_classes=10)
+    elif args.net == "cnn":
+        net = CNN(num_classes=10)
     
     net = net.to(device)
  
@@ -183,7 +193,8 @@ def main():
 
     criterion = nn.CrossEntropyLoss(weight=torch.Tensor(train_distribution).to(device))
     optimizer = torch.optim.Adam(net.parameters(), lr=1e-3)
- 
+    scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99, verbose=True)
+
     sample_images = iter(test_dataset).next()[0].to(device)
     tb.add_image("animal 10", make_grid(sample_images))
     tb.add_graph(net, sample_images)
@@ -192,25 +203,37 @@ def main():
         print(f"----- Epoch {epoch} -----")
         train(net, train_dataset, criterion, optimizer, epoch, tb, args, device)
         test(net, test_dataset, epoch, tb, args, device)
+        scheduler.step()
         print(f"----- End of epoch {epoch} -----")
 
     global best_acc
     print(f"Best Accuracy: {best_acc}")
+    net = load_model(args.run_name, net)
+    net = net.to(device)
+    net.eval()
 
     test_ground_truth = torch.Tensor([]).to(device)
     test_predictions = torch.Tensor([]).to(device)
     with torch.no_grad():
-        net.eval()
         for (images, labels) in test_dataset:
             images, labels = images.to(device), labels.to(device)
             outputs = net(images)
             test_ground_truth = torch.cat((test_ground_truth, labels))
             test_predictions = torch.cat((test_predictions, torch.argmax(outputs, dim=-1)))
-    
-    confusion_df = pd.crosstab(test_ground_truth, test_predictions, rownames=["Actual"], colnames=["Predicted"], margins=True)
+
+    confusion_df = pd.crosstab(test_ground_truth.cpu(), test_predictions.cpu(), rownames=["Actual"], colnames=["Predicted"])
     print("----- confusion matrix -----")
     print(confusion_df)
+    fig, ax = plt.subplots()
+    ax.matshow(confusion_df, cmap=plt.cm.Blues, alpha=0.9)
+    for i, row in confusion_df.iterrows():
+        for j, value in row.iteritems():
+            ax.text(x=j, y=i, s=value, va='center', ha='center', size='xx-large')
 
+    plt.xlabel('Predictions', fontsize=18)
+    plt.ylabel('Actuals', fontsize=18)
+    plt.title('Confusion Matrix', fontsize=18)
+    tb.add_figure("Confusion Matrix", plt.gcf())
     tb.close()
 
 if __name__ == "__main__":
