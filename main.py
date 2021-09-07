@@ -27,11 +27,11 @@ def calculate_accuracy(ground_truth, predictions):
 
 def save_model(run_name, model):
     model_to_save = model.module if hasattr(model, 'module') else model
-    model_checkpoint = os.path.join("C:\\Users\\Allen\\ml\\animal10\\checkpoints", f"{run_name}_checkpoint.bin")
+    model_checkpoint = os.path.join(os.path.dirname(os.path.abspath(__file__)), "checkpoints", f"{run_name}_checkpoint.bin")
     torch.save(model_to_save.state_dict(), model_checkpoint)
 
 def load_model(run_name, model):
-    model_checkpoint = os.path.join("C:\\Users\\Allen\\ml\\animal10\\checkpoints", f"{run_name}_checkpoint.bin")
+    model_checkpoint = os.path.join(os.path.dirname(os.path.abspath(__file__)), "checkpoints", f"{run_name}_checkpoint.bin")
     model.load_state_dict(torch.load(model_checkpoint))
     return model
 
